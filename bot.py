@@ -1,54 +1,36 @@
 import os
-import logging
-from telegram import Update
-from telegram.ext import Application, CommandHandler, ContextTypes
+import telebot
+from dotenv import load_dotenv
 
-# Enable logging
-logging.basicConfig(
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s", level=logging.INFO
-)
+load_dotenv()
 
-# Simple in-memory storage for demonstration (resets on restart)
-user_rewards = {}
+# Use Environment Variable for security
+BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
+bot = telebot.TeleBot(BOT_TOKEN)
 
-async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Send a welcome message when /start is issued."""
-    user = update.effective_user
-    await update.message.reply_text(
-        f"Hi {user.first_name}! Welcome to the AdRewards Bot.\n"
-        "Use /reward to claim your test reward point."
+@bot.message_handler(commands=['start'])
+def send_welcome(message):
+    # Simple reward function
+    user_id = message.from_user.id
+    # Generate a simple pseudo-unique reward code based on user ID
+    reward_code = f"REWARD-{user_id % 10000:04d}"
+
+    welcome_text = (
+        f"🎉 **Welcome {message.from_user.first_name}!**\n\n"
+        f"Here is your exclusive reward code: `{reward_code}`\n\n"
+        f"Use this code at checkout for your benefit. Need a new code later? Just /start again."
     )
+    bot.reply_to(message, welcome_text, parse_mode='Markdown')
 
-async def reward(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Simple function: Increment reward counter for the user."""
-    user_id = update.effective_user.id
-    
-    # Initialize or increment
-    if user_id not in user_rewards:
-        user_rewards[user_id] = 0
-    user_rewards[user_id] += 1
-    
-    current_total = user_rewards[user_id]
-    
-    await update.message.reply_text(
-        f"✅ Reward claimed! You have earned {current_total} test point(s)."
-    )
+@bot.message_handler(commands=['help'])
+def send_help(message):
+    bot.reply_to(message, "Simply send /start to get your reward code. That's it!")
 
-def main() -> None:
-    """Start the bot."""
-    # Railway uses environment variables for secrets
-    token = os.environ.get("TELEGRAM_BOT_TOKEN")
-    if not token:
-        raise ValueError("No TELEGRAM_BOT_TOKEN found in environment variables.")
+# Echo fallback (optional but keeps engagement)
+@bot.message_handler(func=lambda message: True)
+def echo_all(message):
+    bot.reply_to(message, "Please type /start to get your reward code!")
 
-    application = Application.builder().token(token).build()
-
-    # Command handlers
-    application.add_handler(CommandHandler("start", start))
-    application.add_handler(CommandHandler("reward", reward))
-
-    # Run the bot (Long Polling - ideal for Railway worker)
-    application.run_polling(allowed_updates=Update.ALL_TYPES)
-
-if __name__ == "__main__":
-    main()
+if __name__ == '__main__':
+    print("Bot is running...")
+    bot.infinity_polling()
