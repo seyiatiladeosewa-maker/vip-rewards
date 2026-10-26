@@ -1,51 +1,52 @@
-import os
-import telebot
-from flask import Flask, request
+import logging
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
+from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
 
-BOT_TOKEN = os.environ.get('BOT_TOKEN')
-if not BOT_TOKEN:
-    raise RuntimeError("BOT_TOKEN is not set")
+# Enable logging
+logging.basicConfig(format='%(asctime)s - %(name)s - %(levelname)s - %(message)s', level=logging.INFO)
 
-bot = telebot.TeleBot(BOT_TOKEN)
-app = Flask(__name__)
-user_points = {}
+# Replace with your actual token from BotFather
+TOKEN = "YOUR_BOT_TOKEN_HERE"
 
-@bot.message_handler(commands=['start', 'help'])
-def send_welcome(message):
-    bot.reply_to(message, "Welcome! Use /add <number> to save points, or /balance to view them.")
+# Simple in-memory storage (resets on restart; fine for a demo bot)
+user_balances = {}
 
-@bot.message_handler(commands=['add'])
-def add_points(message):
-    try:
-        parts = message.text.split()
-        if len(parts) < 2:
-            bot.reply_to(message, "Usage: /add 10")
-            return
-        amount = int(parts[1])
-        uid = message.from_user.id
-        user_points[uid] = user_points.get(uid, 0) + amount
-        bot.reply_to(message, f"Added {amount} points. Total: {user_points[uid]}")
-    except ValueError:
-        bot.reply_to(message, "Please provide a valid number.")
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.effective_user.id
+    if user_id not in user_balances:
+        user_balances[user_id] = 0
+    
+    keyboard = [[InlineKeyboardButton("Claim Daily Bonus (+10)", callback_data='claim')]]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    
+    text = (
+        f"Welcome to Rewards!\n\n"
+        f"Your current balance: {user_balances[user_id]} points.\n"
+        f"Click below to claim your daily bonus."
+    )
+    await update.message.reply_text(text, reply_markup=reply_markup)
 
-@bot.message_handler(commands=['balance'])
-def show_balance(message):
-    uid = message.from_user.id
-    bot.reply_to(message, f"Your current balance is: {user_points.get(uid, 0)} points.")
+async def claim_bonus(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    
+    user_id = query.from_user.id
+    # Simple logic: Add 10 points every time (In production, add a 24h timer)
+    user_balances[user_id] = user_balances.get(user_id, 0) + 10
+    
+    await query.edit_message_text(
+        text=f"Bonus claimed! Your new balance is {user_balances[user_id]} points.\n"
+             f"(This is a demo. No real rewards are issued.)"
+    )
 
-@app.route('/health')
-def health():
-    return "ok", 200
-
-@app.route('/webhook', methods=['POST'])
-def webhook():
-    if request.headers.get('content-type') == 'application/json':
-        json_string = request.get_data().decode('utf-8')
-        update = telebot.types.Update.de_json(json_string)
-        bot.process_new_updates([update])
-        return "ok", 200
-    return "forbidden", 403
+def main():
+    app = Application.builder().token(TOKEN).build()
+    
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CallbackQueryHandler(claim_bonus, pattern='claim'))
+    
+    # For Railway deployment, use polling (simple) or webhook (better for scale)
+    app.run_polling()
 
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 8080))
-    app.run(host='0.0.0.0', port=port)
+    main()
