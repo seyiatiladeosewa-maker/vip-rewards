@@ -1,2 +1,1 @@
-pyTelegramBotAPI==4.20.0
-Flask==3.0.3
+web: python bot.py
