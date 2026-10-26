@@ -1,36 +1,43 @@
-import os
 import telebot
-from dotenv import load_dotenv
+import os
 
-load_dotenv()
-
-# Use Environment Variable for security
-BOT_TOKEN = os.getenv('TELEGRAM_BOT_TOKEN')
+# Initialize bot with token from Railway Environment Variables
+BOT_TOKEN = os.environ.get('BOT_TOKEN')
 bot = telebot.TeleBot(BOT_TOKEN)
 
-@bot.message_handler(commands=['start'])
+# In-memory storage (resets on restart; sufficient for a simple tool)
+user_points = {}
+
+@bot.message_handler(commands=['start', 'help'])
 def send_welcome(message):
-    # Simple reward function
+    bot.reply_to(message, "Welcome! Use /add <number> to save points, or /balance to view them.")
+
+@bot.message_handler(commands=['add'])
+def add_points(message):
+    try:
+        # Extract the number from the command
+        parts = message.text.split()
+        if len(parts) < 2:
+            bot.reply_to(message, "Usage: /add 10")
+            return
+        
+        amount = int(parts[1])
+        user_id = message.from_user.id
+        
+        if user_id not in user_points:
+            user_points[user_id] = 0
+            
+        user_points[user_id] += amount
+        bot.reply_to(message, f"Added {amount} points. Total: {user_points[user_id]}")
+        
+    except ValueError:
+        bot.reply_to(message, "Please provide a valid number.")
+
+@bot.message_handler(commands=['balance'])
+def show_balance(message):
     user_id = message.from_user.id
-    # Generate a simple pseudo-unique reward code based on user ID
-    reward_code = f"REWARD-{user_id % 10000:04d}"
+    points = user_points.get(user_id, 0)
+    bot.reply_to(message, f"Your current balance is: {points} points.")
 
-    welcome_text = (
-        f"🎉 **Welcome {message.from_user.first_name}!**\n\n"
-        f"Here is your exclusive reward code: `{reward_code}`\n\n"
-        f"Use this code at checkout for your benefit. Need a new code later? Just /start again."
-    )
-    bot.reply_to(message, welcome_text, parse_mode='Markdown')
-
-@bot.message_handler(commands=['help'])
-def send_help(message):
-    bot.reply_to(message, "Simply send /start to get your reward code. That's it!")
-
-# Echo fallback (optional but keeps engagement)
-@bot.message_handler(func=lambda message: True)
-def echo_all(message):
-    bot.reply_to(message, "Please type /start to get your reward code!")
-
-if __name__ == '__main__':
-    print("Bot is running...")
-    bot.infinity_polling()
+# Start polling
+bot.infinity_polling()
